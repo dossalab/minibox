@@ -21,7 +21,9 @@ defmt-logging = [
   "embassy-time/defmt-timestamp-uptime",
   "embassy-nrf/defmt",
   "nrf-softdevice/defmt",
-  "panic-probe/print-defmt"
+  "panic-probe/print-defmt",
+  "bq27xxx/defmt",
+  "embedded-hal-async/defmt-03"
 ]
 platform-nrf52832 = [
   "embassy-nrf/nrf52832",
@@ -40,6 +42,12 @@ nrf-softdevice-s132 = { path = "../nrf-softdevice/nrf-softdevice-s132"}
 nrf-softdevice = { path = "../nrf-softdevice/nrf-softdevice", features = [ "s132", "ble-gatt-client", "ble-central", "ble-sec", "critical-section-impl" ] }
 byteorder = { version = "1.5.0", default-features = false }
 assign-resources = "0.4.1"
+# bq27xxx = "0.0.2"
+embedded-hal-async = "1.0.0"
+
+[dependencies.bq27xxx]
+# path = "../bq27xxx-rs/"
+git = "https://github.com/dossalab/bq27xxx-rs"
 
 [dependencies.embassy-executor]
 # git = "https://github.com/embassy-rs/embassy"

@@ -2,7 +2,7 @@ MEMORY
 {
   /* These values correspond to the NRF52832 with SoftDevices S132 7.3.0 */
   FLASH : ORIGIN = 0x00000000 + 152K, LENGTH = 256K - 152K
-  RAM : ORIGIN = 0x20000000 + 23K, LENGTH = 64K - 23K
+  RAM : ORIGIN = 0x20000000 + 0x3328, LENGTH = 32K - 0x3328
 }
 
 SECTIONS {

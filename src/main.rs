@@ -2,18 +2,22 @@
 #![no_main]
 #![feature(type_alias_impl_trait)]
 
-use assign_resources::assign_resources;
+mod board;
+mod led;
+mod panic;
+mod pmic;
+
+use crate::board::*;
+use crate::led::LedIndicationsSignal;
 use byteorder::{ByteOrder, LittleEndian};
-use defmt::{bitflags, trace};
+use defmt::bitflags;
 use defmt::{error, info, unwrap};
 use embassy_executor::Spawner;
-use embassy_nrf::peripherals;
 use embassy_nrf::pwm::SimplePwm;
-use embassy_nrf::{
-    gpio::{self, AnyPin, Pin},
-    interrupt, Peripherals,
-};
+use embassy_nrf::{gpio, interrupt, Peripherals};
+
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
+use embassy_time::{Duration, Timer};
 use git_version::git_version;
 use nrf_softdevice::{
     self as _,
@@ -28,7 +32,6 @@ use nrf_softdevice::{
 };
 
 use defmt_rtt as _;
-use panic_probe as _;
 
 use static_cell::StaticCell;
 
@@ -57,7 +60,7 @@ struct JoystickData {
     buttons: ButtonFlags,
 }
 
-type MySignal = Signal<CriticalSectionRawMutex, JoystickData>;
+type BleMessageSignal = Signal<CriticalSectionRawMutex, JoystickData>;
 
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 enum BleError {
@@ -118,19 +121,6 @@ struct HidServiceClient {
     hid_report: [u8; 16],
 }
 
-assign_resources! {
-    system: SystemResources {
-        led: P0_00
-    },
-    motors: MotorResources {
-        rotor1: P0_01,
-        rotor2: P0_02,
-        tail_n: P0_03,
-        tail_p: P0_04,
-        pwm: PWM0
-    }
-}
-
 fn embassy_init() -> Peripherals {
     let mut config = embassy_nrf::config::Config::default();
 
@@ -159,7 +149,7 @@ async fn softdevice_task(sd: &'static Softdevice) -> ! {
 
 async fn run<'a>(
     sd: &Softdevice,
-    signal: &'static MySignal,
+    signal: &'static BleMessageSignal,
     bonder: &'static Bonder,
 ) -> Result<(), BleError> {
     let addr = &[&Address::new(
@@ -210,8 +200,6 @@ async fn run<'a>(
             let t1 = LittleEndian::read_u16(&val[8..10]);
             let t2 = LittleEndian::read_u16(&val[10..12]);
 
-            trace!("button mask is {:x}", button_mask);
-
             let jd = JoystickData {
                 j1: (x1, y1),
                 j2: (x2, y2),
@@ -228,26 +216,69 @@ async fn run<'a>(
     Ok(())
 }
 #[embassy_executor::task]
-async fn handle_ble_out(signal: &'static MySignal, res: MotorResources) {
-    let mut pwm = SimplePwm::new_2ch(res.pwm, res.rotor1, res.rotor2);
+async fn handle_ble_out(signal: &'static BleMessageSignal, res: MotorResources) {
+    let mut pwm = SimplePwm::new_3ch(res.pwm, res.rotor1, res.rotor2, res.tail_n);
 
+    let mut tail_p = gpio::Output::new(res.tail_p, gpio::Level::Low, gpio::OutputDrive::Standard);
     const MAX_DUTY: u16 = 1024;
 
     pwm.set_max_duty(MAX_DUTY);
-    pwm.set_prescaler(embassy_nrf::pwm::Prescaler::Div1);
+    pwm.set_prescaler(embassy_nrf::pwm::Prescaler::Div4);
 
     info!("bluetooth message handler is running");
+
+    let rudder_scale = 4;
 
     loop {
         let data = signal.wait().await;
 
-        info!(
-            "j1: {}, j2: {}, t1: {}, t2: {}, buttons: {}",
-            data.j1, data.j2, data.t1, data.t2, data.buttons
-        );
+        // info!(
+        //     "j1: {}, j2: {}, t1: {}, t2: {}, buttons: {}",
+        //     data.j1, data.j2, data.t1, data.t2, data.buttons
+        // );
 
-        pwm.set_duty(0, MAX_DUTY - data.t1);
-        pwm.set_duty(1, MAX_DUTY - data.t2);
+        let mut rudder: i32 = 1024 - (data.j2.0 >> 5) as i32;
+        let mut throttle: i32 = 1024 - (data.j1.1 >> 5) as i32;
+        let tail: i32 = 1024 - (data.j2.1 >> 5) as i32;
+
+        rudder = -rudder;
+        if throttle < 80 {
+            throttle = 0;
+        }
+
+        if i32::abs(rudder) < 100 {
+            rudder = 0;
+        }
+
+        let mut r1: i32 = throttle - rudder / rudder_scale;
+        let mut r2: i32 = throttle + rudder / rudder_scale;
+
+        if r1 < 0 {
+            r1 = 0;
+        }
+
+        if r2 < 0 {
+            r2 = 0;
+        }
+
+        if r1 > MAX_DUTY as i32 {
+            r1 = MAX_DUTY as i32;
+        }
+
+        if r2 > MAX_DUTY as i32 {
+            r2 = MAX_DUTY as i32;
+        }
+
+        if tail > 0 {
+            pwm.set_duty(2, tail as u16);
+            tail_p.set_high();
+        } else {
+            pwm.set_duty(2, MAX_DUTY - (-tail as u16));
+            tail_p.set_low();
+        }
+
+        pwm.set_duty(0, MAX_DUTY - r1 as u16);
+        pwm.set_duty(1, MAX_DUTY - r2 as u16);
     }
 }
 
@@ -261,14 +292,22 @@ async fn main(spawner: Spawner) {
         git_version!()
     );
 
-    static BLE_DATA_SIGNAL: MySignal = Signal::new();
+    // loop {
+    //     Timer::after(Duration::from_secs(1)).await;
+    // }
+
+    static BLE_DATA_SIGNAL: BleMessageSignal = Signal::new();
+    static LED_INDICATIONS_SIGNAL: LedIndicationsSignal = Signal::new();
 
     let sd = softdevice_init();
 
     unwrap!(spawner.spawn(softdevice_task(sd)));
+    unwrap!(spawner.spawn(pmic::handle_power_task(&LED_INDICATIONS_SIGNAL, r.pmic)));
+    unwrap!(spawner.spawn(led::handle_indications_task(&LED_INDICATIONS_SIGNAL, r.led)));
     unwrap!(spawner.spawn(handle_ble_out(&BLE_DATA_SIGNAL, r.motors)));
 
     info!("Starting the main loop!");
+    LED_INDICATIONS_SIGNAL.signal(1);
 
     static BONDER: StaticCell<Bonder> = StaticCell::new();
     let bonder = BONDER.init(Bonder::default());
