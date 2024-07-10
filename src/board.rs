@@ -18,5 +18,8 @@ assign_resources! {
         sda: P0_07,
         scl: P0_08,
         i2c: TWISPI0,
+    },
+    switch: SwitchResources {
+        switch: P0_05,
     }
 }

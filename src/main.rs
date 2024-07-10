@@ -10,7 +10,7 @@ mod pmic;
 use crate::board::*;
 use crate::led::LedIndicationsSignal;
 use byteorder::{ByteOrder, LittleEndian};
-use defmt::bitflags;
+use defmt::{bitflags, warn};
 use defmt::{error, info, unwrap};
 use embassy_executor::Spawner;
 use embassy_nrf::pwm::SimplePwm;
@@ -282,6 +282,41 @@ async fn handle_ble_out(signal: &'static BleMessageSignal, res: MotorResources) 
     }
 }
 
+#[embassy_executor::task]
+async fn switch_poll_task(r: SwitchResources) {
+    let mut switch = gpio::Input::new(r.switch, gpio::Pull::Up);
+
+    loop {
+        if switch.is_low() {
+            warn!("reset switch stuck, retrying...");
+            Timer::after_secs(5).await;
+
+            continue;
+        }
+
+        info!("waiting for the reset action (anytime now)");
+
+        switch.wait_for_low().await;
+        info!("received reset action, performing reset");
+
+        cortex_m::peripheral::SCB::sys_reset();
+    }
+}
+
+// #[embassy_executor::main]
+// async fn main(spawner: Spawner) {
+//     let p = embassy_init();
+//     let r = split_resources!(p);
+
+//     static LED_INDICATIONS_SIGNAL: LedIndicationsSignal = Signal::new();
+//     unwrap!(spawner.spawn(led::handle_indications_task(&LED_INDICATIONS_SIGNAL, r.led)));
+
+//     // LED_INDICATIONS_SIGNAL.signal(1);
+
+//     Timer::after_secs(10).await;
+//     cortex_m::peripheral::SCB::sys_reset();
+// }
+
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
     let p = embassy_init();
@@ -292,16 +327,13 @@ async fn main(spawner: Spawner) {
         git_version!()
     );
 
-    // loop {
-    //     Timer::after(Duration::from_secs(1)).await;
-    // }
-
     static BLE_DATA_SIGNAL: BleMessageSignal = Signal::new();
     static LED_INDICATIONS_SIGNAL: LedIndicationsSignal = Signal::new();
 
     let sd = softdevice_init();
 
     unwrap!(spawner.spawn(softdevice_task(sd)));
+    // unwrap!(spawner.spawn(switch_poll_task(r.switch)));
     unwrap!(spawner.spawn(pmic::handle_power_task(&LED_INDICATIONS_SIGNAL, r.pmic)));
     unwrap!(spawner.spawn(led::handle_indications_task(&LED_INDICATIONS_SIGNAL, r.led)));
     unwrap!(spawner.spawn(handle_ble_out(&BLE_DATA_SIGNAL, r.motors)));
