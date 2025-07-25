@@ -5,25 +5,27 @@ use embassy_time::{Duration, Timer};
 
 use crate::LedResources;
 
-pub type LedIndicationsSignal = Signal<CriticalSectionRawMutex, u32>;
+pub enum IndicationStyle {
+    BlinkOnce,
+    PermanentHigh,
+}
+
+pub type LedIndicationsSignal = Signal<CriticalSectionRawMutex, IndicationStyle>;
 
 #[embassy_executor::task]
-pub async fn handle_indications_task(signal: &'static LedIndicationsSignal, res: LedResources) {
+pub async fn run(signal: &'static LedIndicationsSignal, res: LedResources) {
     info!("led indications running...");
+
     let mut led = gpio::Output::new(res.led, gpio::Level::Low, gpio::OutputDrive::Standard);
-
     loop {
-        let val = signal.wait().await;
-
-        if val == 1 {
-            for _ in 0..2 {
+        match signal.wait().await {
+            IndicationStyle::BlinkOnce => {
                 led.set_high();
                 Timer::after(Duration::from_millis(50)).await;
                 led.set_low();
                 Timer::after(Duration::from_millis(100)).await;
             }
-        } else if val == 2 {
-            led.set_high();
-        }
+            IndicationStyle::PermanentHigh => led.set_high(),
+        };
     }
 }

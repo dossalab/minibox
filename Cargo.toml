@@ -1,6 +1,6 @@
 [package]
 edition = "2021"
-name = "ble-sandbox"
+name = "minibox"
 version = "0.1.0"
 
 [profile.dev]
@@ -22,7 +22,6 @@ defmt-logging = [
   "embassy-nrf/defmt",
   "nrf-softdevice/defmt",
   "panic-probe/print-defmt",
-  "bq27xxx/defmt",
   "embedded-hal-async/defmt-03"
 ]
 platform-nrf52832 = [
@@ -33,41 +32,31 @@ platform-nrf52832 = [
 [dependencies]
 cortex-m = "0.7.6"
 cortex-m-rt = "0.7.0"
-panic-probe = "0.3"
+panic-probe = "1.0.0"
 git-version = "0.3.5"
-defmt = { version = "0.3", optional = true }
-defmt-rtt = { version = "0.4.0", optional = true }
-static_cell = "2.0.0"
-nrf-softdevice-s132 = { path = "../nrf-softdevice/nrf-softdevice-s132"}
-nrf-softdevice = { path = "../nrf-softdevice/nrf-softdevice", features = [ "s132", "ble-gatt-client", "ble-central", "ble-sec", "critical-section-impl" ] }
+defmt = { version = "1.0.1", optional = true }
+defmt-rtt = { version = "1.0.0", optional = true }
+static_cell = "2.1.1"
 byteorder = { version = "1.5.0", default-features = false }
-assign-resources = "0.4.1"
-# bq27xxx = "0.0.2"
+assign-resources = "0.5.0"
 embedded-hal-async = "1.0.0"
-pid = "4.0.0"
-
-[dependencies.bq27xxx]
-# path = "../bq27xxx-rs/"
-git = "https://github.com/dossalab/bq27xxx-rs"
 
 [dependencies.embassy-executor]
-# git = "https://github.com/embassy-rs/embassy"
-path = "../embassy/embassy-executor"
-features = [ "arch-cortex-m", "executor-thread", "executor-interrupt", "integrated-timers" ]
+git = "https://github.com/embassy-rs/embassy"
+features = [ "arch-cortex-m", "executor-thread", "executor-interrupt" ]
 
 [dependencies.embassy-futures]
 git = "https://github.com/embassy-rs/embassy"
 
 [dependencies.embassy-time]
-# git = "https://github.com/embassy-rs/embassy"
-path = "../embassy/embassy-time"
+git = "https://github.com/embassy-rs/embassy"
 
-# [dependencies.nrf-softdevice]
-# git = "https://github.com/embassy-rs/nrf-softdevice"
-# features = [ "s132", "ble-gatt-client", "ble-central", "ble-sec", "critical-section-impl" ]
+[dependencies.nrf-softdevice]
+git = "https://github.com/embassy-rs/nrf-softdevice"
+features = [ "s132", "ble-gatt-client", "ble-central", "ble-sec", "critical-section-impl" ]
 
 [dependencies.embassy-nrf]
-path = "../embassy/embassy-nrf"
+git = "https://github.com/embassy-rs/embassy"
 features = [ "time-driver-rtc1", "gpiote"  ]
 
 [dependencies.embassy-sync]
