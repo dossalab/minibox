@@ -1,6 +1,10 @@
 use assign_resources::assign_resources;
 
-use embassy_nrf::peripherals;
+use embassy_nrf::{bind_interrupts, peripherals, saadc};
+
+bind_interrupts!(pub struct Irqs {
+    SAADC => saadc::InterruptHandler;
+});
 
 assign_resources! {
     led: LedResources {
@@ -21,5 +25,11 @@ assign_resources! {
     },
     switch: SwitchResources {
         switch: P0_05,
+    },
+    gyro: GyroResources {
+        adc: SAADC,
+        enable: P0_26,
+        vin: P0_28,
+        vref: P0_29,
     }
 }

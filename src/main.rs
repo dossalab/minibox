@@ -3,6 +3,7 @@
 #![feature(type_alias_impl_trait)]
 
 mod board;
+mod controls;
 mod led;
 mod panic;
 mod pmic;
@@ -215,72 +216,6 @@ async fn run<'a>(
 
     Ok(())
 }
-#[embassy_executor::task]
-async fn handle_ble_out(signal: &'static BleMessageSignal, res: MotorResources) {
-    let mut pwm = SimplePwm::new_3ch(res.pwm, res.rotor1, res.rotor2, res.tail_n);
-
-    let mut tail_p = gpio::Output::new(res.tail_p, gpio::Level::Low, gpio::OutputDrive::Standard);
-    const MAX_DUTY: u16 = 1024;
-
-    pwm.set_max_duty(MAX_DUTY);
-    pwm.set_prescaler(embassy_nrf::pwm::Prescaler::Div4);
-
-    info!("bluetooth message handler is running");
-
-    let rudder_scale = 4;
-
-    loop {
-        let data = signal.wait().await;
-
-        // info!(
-        //     "j1: {}, j2: {}, t1: {}, t2: {}, buttons: {}",
-        //     data.j1, data.j2, data.t1, data.t2, data.buttons
-        // );
-
-        let mut rudder: i32 = 1024 - (data.j2.0 >> 5) as i32;
-        let mut throttle: i32 = 1024 - (data.j1.1 >> 5) as i32;
-        let tail: i32 = 1024 - (data.j2.1 >> 5) as i32;
-
-        rudder = -rudder;
-        if throttle < 80 {
-            throttle = 0;
-        }
-
-        if i32::abs(rudder) < 100 {
-            rudder = 0;
-        }
-
-        let mut r1: i32 = throttle - rudder / rudder_scale;
-        let mut r2: i32 = throttle + rudder / rudder_scale;
-
-        if r1 < 0 {
-            r1 = 0;
-        }
-
-        if r2 < 0 {
-            r2 = 0;
-        }
-
-        if r1 > MAX_DUTY as i32 {
-            r1 = MAX_DUTY as i32;
-        }
-
-        if r2 > MAX_DUTY as i32 {
-            r2 = MAX_DUTY as i32;
-        }
-
-        if tail > 0 {
-            pwm.set_duty(2, tail as u16);
-            tail_p.set_high();
-        } else {
-            pwm.set_duty(2, MAX_DUTY - (-tail as u16));
-            tail_p.set_low();
-        }
-
-        pwm.set_duty(0, MAX_DUTY - r1 as u16);
-        pwm.set_duty(1, MAX_DUTY - r2 as u16);
-    }
-}
 
 #[embassy_executor::task]
 async fn switch_poll_task(r: SwitchResources) {
@@ -303,50 +238,55 @@ async fn switch_poll_task(r: SwitchResources) {
     }
 }
 
-// #[embassy_executor::main]
-// async fn main(spawner: Spawner) {
-//     let p = embassy_init();
-//     let r = split_resources!(p);
-
-//     static LED_INDICATIONS_SIGNAL: LedIndicationsSignal = Signal::new();
-//     unwrap!(spawner.spawn(led::handle_indications_task(&LED_INDICATIONS_SIGNAL, r.led)));
-
-//     // LED_INDICATIONS_SIGNAL.signal(1);
-
-//     Timer::after_secs(10).await;
-//     cortex_m::peripheral::SCB::sys_reset();
-// }
-
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
     let p = embassy_init();
     let r = split_resources!(p);
 
-    info!(
-        "Xbox controller demo ({}) is running. Hello!",
-        git_version!()
-    );
-
-    static BLE_DATA_SIGNAL: BleMessageSignal = Signal::new();
     static LED_INDICATIONS_SIGNAL: LedIndicationsSignal = Signal::new();
-
-    let sd = softdevice_init();
-
-    unwrap!(spawner.spawn(softdevice_task(sd)));
-    // unwrap!(spawner.spawn(switch_poll_task(r.switch)));
-    unwrap!(spawner.spawn(pmic::handle_power_task(&LED_INDICATIONS_SIGNAL, r.pmic)));
     unwrap!(spawner.spawn(led::handle_indications_task(&LED_INDICATIONS_SIGNAL, r.led)));
-    unwrap!(spawner.spawn(handle_ble_out(&BLE_DATA_SIGNAL, r.motors)));
 
-    info!("Starting the main loop!");
     LED_INDICATIONS_SIGNAL.signal(1);
 
-    static BONDER: StaticCell<Bonder> = StaticCell::new();
-    let bonder = BONDER.init(Bonder::default());
-
-    loop {
-        if let Err(err) = run(sd, &BLE_DATA_SIGNAL, bonder).await {
-            error!("error while handling connections ({})", err);
-        }
-    }
+    Timer::after_secs(60).await;
+    cortex_m::peripheral::SCB::sys_reset();
 }
+
+// #[embassy_executor::main]
+// async fn main(spawner: Spawner) {
+//     let p = embassy_init();
+//     let r = split_resources!(p);
+
+//     info!(
+//         "Xbox controller demo ({}) is running. Hello!",
+//         git_version!()
+//     );
+
+//     static BLE_DATA_SIGNAL: BleMessageSignal = Signal::new();
+//     static LED_INDICATIONS_SIGNAL: LedIndicationsSignal = Signal::new();
+
+//     let sd = softdevice_init();
+
+//     unwrap!(spawner.spawn(softdevice_task(sd)));
+//     // unwrap!(spawner.spawn(switch_poll_task(r.switch)));
+//     unwrap!(spawner.spawn(pmic::handle_power_task(&LED_INDICATIONS_SIGNAL, r.pmic)));
+//     unwrap!(spawner.spawn(led::handle_indications_task(&LED_INDICATIONS_SIGNAL, r.led)));
+
+//     unwrap!(spawner.spawn(controls::handle_controls(
+//         &BLE_DATA_SIGNAL,
+//         r.motors,
+//         r.gyro
+//     )));
+
+//     info!("Starting the main loop!");
+//     LED_INDICATIONS_SIGNAL.signal(1);
+
+//     static BONDER: StaticCell<Bonder> = StaticCell::new();
+//     let bonder = BONDER.init(Bonder::default());
+
+//     loop {
+//         if let Err(err) = run(sd, &BLE_DATA_SIGNAL, bonder).await {
+//             error!("error while handling connections ({})", err);
+//         }
+//     }
+// }

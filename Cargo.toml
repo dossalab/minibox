@@ -44,6 +44,7 @@ byteorder = { version = "1.5.0", default-features = false }
 assign-resources = "0.4.1"
 # bq27xxx = "0.0.2"
 embedded-hal-async = "1.0.0"
+pid = "4.0.0"
 
 [dependencies.bq27xxx]
 # path = "../bq27xxx-rs/"
@@ -53,6 +54,9 @@ git = "https://github.com/dossalab/bq27xxx-rs"
 # git = "https://github.com/embassy-rs/embassy"
 path = "../embassy/embassy-executor"
 features = [ "arch-cortex-m", "executor-thread", "executor-interrupt", "integrated-timers" ]
+
+[dependencies.embassy-futures]
+git = "https://github.com/embassy-rs/embassy"
 
 [dependencies.embassy-time]
 # git = "https://github.com/embassy-rs/embassy"

@@ -21,6 +21,7 @@ async fn power_run<'a, I: twim::Instance>(
 ) -> Result<(), NrfGaugeError> {
     const INT_DEBOUNCE_MS: u64 = 5;
     let override_itpor = false;
+    // let override_itpor = true;
 
     let mut int = gpio::Input::new(pin, gpio::Pull::Up);
 
@@ -49,17 +50,17 @@ async fn power_run<'a, I: twim::Instance>(
 
         // design capacity = 180 mah
         block.raw[6] = 0x00;
-        block.raw[7] = 0xb4;
+        block.raw[7] = 180;
 
         // Design energy = capacoty * 3.7
         block.raw[8] = 0x02;
         block.raw[9] = 0x9a;
 
         // charge current = 100 ma
-        // taper current = 0.1 * charge current
-        //  Taper Rate = Design Capacity / (0.1 * Taper Current) = DC / (0.01 * charge current)
+        // taper current = 0.1 * charge current + 15%
+        //  Taper Rate = Design Capacity / (0.1 * Taper Current)
         block.raw[21] = 0x00;
-        block.raw[22] = 0xb4;
+        block.raw[22] = 150;
 
         gauge
             .memblock_write(memory_subclass::STATE, 0, &block)
