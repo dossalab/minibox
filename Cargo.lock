@@ -646,6 +646,7 @@ dependencies = [
  "embassy-sync 0.7.0",
  "embassy-time",
  "embedded-hal-async",
+ "futures",
  "git-version",
  "nrf-softdevice",
  "panic-probe",

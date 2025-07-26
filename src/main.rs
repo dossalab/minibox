@@ -5,7 +5,7 @@ use assign_resources::assign_resources;
 
 use core::panic::PanicInfo;
 use embassy_executor::Spawner;
-use embassy_nrf::{interrupt, peripherals, Peri, Peripherals};
+use embassy_nrf::{gpio, interrupt, peripherals, Peri, Peripherals};
 use embassy_sync::signal::Signal;
 use git_version::git_version;
 use led::LedIndicationsSignal;
@@ -15,7 +15,7 @@ use defmt::{info, unwrap};
 
 mod ble;
 mod led;
-mod xboxhid;
+mod xbox;
 
 use defmt_rtt as _;
 
@@ -72,8 +72,16 @@ async fn main(spawner: Spawner) {
 
     static LED_INDICATIONS_SIGNAL: LedIndicationsSignal = Signal::new();
 
+    // Check whether we should start scanning first
+    let scan_trigger_input = gpio::Input::new(r.channels.ch0, gpio::Pull::Up);
+    let should_scan = true; // scan_trigger_input.is_low();
+
+    if should_scan {
+        info!("scanning mode requested");
+    }
+
     unwrap!(spawner.spawn(led::run(&LED_INDICATIONS_SIGNAL, r.led)));
-    unwrap!(spawner.spawn(ble::run(sd)));
+    unwrap!(spawner.spawn(ble::run(sd, should_scan)));
     unwrap!(spawner.spawn(run_softdevice(sd)));
 
     LED_INDICATIONS_SIGNAL.signal(led::IndicationStyle::BlinkOnce);

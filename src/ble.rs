@@ -1,5 +1,7 @@
 use byteorder::{ByteOrder, LittleEndian};
-use defmt::{error, info};
+use defmt::{debug, error, info, warn};
+use embassy_futures::select::{select, Either};
+use embassy_time::{Duration, Timer};
 use nrf_softdevice::{
     ble::{
         self,
@@ -12,7 +14,9 @@ use nrf_softdevice::{
 };
 use static_cell::StaticCell;
 
-use crate::xboxhid::{ButtonFlags, JoystickData, XboxHidServiceClient, XboxHidServiceClientEvent};
+use crate::xbox::{
+    self, ButtonFlags, JoystickData, XboxHidServiceClient, XboxHidServiceClientEvent,
+};
 
 pub struct Bonder {}
 
@@ -44,6 +48,7 @@ enum BleError {
     ConnectError,
     DiscoveryError,
     WriteError(gatt_client::WriteError),
+    ReadError(gatt_client::ReadError),
 }
 
 impl From<ConnectError> for BleError {
@@ -64,14 +69,64 @@ impl From<gatt_client::WriteError> for BleError {
     }
 }
 
-async fn wait_connection(sd: &Softdevice, bonder: &'static Bonder) -> Result<(), BleError> {
-    let addr = &[&Address::new(
-        AddressType::Public,
-        [0x9a, 0x58, 0xd7, 0xd7, 0x6a, 0xf4],
-    )];
+impl From<gatt_client::ReadError> for BleError {
+    fn from(e: gatt_client::ReadError) -> Self {
+        return Self::ReadError(e);
+    }
+}
 
+// Scan for Xbox controllers
+async fn scan(sd: &Softdevice) -> Option<Address> {
+    let config = central::ScanConfig::default();
+    let timeout = Duration::from_secs(10);
+
+    let do_scan = async || loop {
+        let ret = central::scan(sd, &config, |params| unsafe {
+            let payload = core::slice::from_raw_parts(params.data.p_data, params.data.len as usize);
+
+            if xbox::is_xbox_controller(payload) {
+                let addr = Address::new(AddressType::Public, params.peer_addr.addr);
+                info!("found controller {:?}", addr);
+                Some(addr)
+            } else {
+                None
+            }
+        })
+        .await;
+
+        match ret {
+            Ok(addr) => return addr,
+            Err(e) => {
+                error!("scan error - {}", e);
+                Timer::after_millis(100).await;
+            }
+        }
+    };
+
+    info!(
+        "scanning for Xbox controllers (timeout is {}s)...",
+        timeout.as_secs()
+    );
+
+    match select(do_scan(), Timer::after(timeout)).await {
+        Either::First(address) => Some(address),
+        Either::Second(_) => {
+            warn!("scanning timed out");
+            None
+        }
+    }
+}
+
+async fn wait_connection(
+    sd: &Softdevice,
+    addr: Address,
+    bonder: &'static Bonder,
+) -> Result<(), BleError> {
+    let whitelist = &[&addr];
     let mut config = central::ConnectConfig::default();
-    config.scan_config.whitelist = Some(addr);
+    config.scan_config.whitelist = Some(whitelist);
+
+    info!("connecting to device.. {}", addr);
 
     let conn = central::connect_with_security(sd, &config, bonder).await?;
     match conn.encrypt() {
@@ -92,14 +147,21 @@ async fn wait_connection(sd: &Softdevice, bonder: &'static Bonder) -> Result<(),
         }
     };
 
-    info!("connected!");
+    info!("connected");
 
     let client: XboxHidServiceClient = gatt_client::discover(&conn).await?;
 
+    debug!("services discovered!");
+
     client.hid_report_cccd_write(true).await?;
 
-    // let report_map = unwrap!(client.hid_report_map_read().await);
-    // info!("report map is {:x}", report_map);
+    debug!("notifications enabled!");
+
+    let report_map = client.hid_report_map_read().await?;
+    info!("report map is {:x}", report_map);
+
+    let report = client.hid_report_read().await?;
+    info!("report is {:x}", report);
 
     gatt_client::run(&conn, &client, |event| match event {
         XboxHidServiceClientEvent::HidReportNotification(val) => {
@@ -130,15 +192,16 @@ async fn wait_connection(sd: &Softdevice, bonder: &'static Bonder) -> Result<(),
 }
 
 #[embassy_executor::task]
-pub async fn run(sd: &'static Softdevice) {
+pub async fn run(sd: &'static Softdevice, provision_mode: bool) {
     static BONDER: StaticCell<Bonder> = StaticCell::new();
 
     let bonder = BONDER.init(Bonder::default());
-
     loop {
-        match wait_connection(sd, bonder).await {
-            Err(e) => error!("unable to handle connection - {}", e),
-            Ok(_) => {}
+        if let Some(address) = scan(sd).await {
+            match wait_connection(sd, address, bonder).await {
+                Err(e) => error!("unable to handle connection - {}", e),
+                Ok(_) => {}
+            }
         }
     }
 }
