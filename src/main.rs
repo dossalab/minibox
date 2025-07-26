@@ -21,6 +21,7 @@ use defmt_rtt as _;
 
 assign_resources! {
     led: LedResources {
+        pwm: PWM0,
         led: P0_11
     },
     channels: ChannelResources {
