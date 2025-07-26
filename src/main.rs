@@ -8,13 +8,13 @@ use embassy_executor::Spawner;
 use embassy_nrf::{interrupt, peripherals, Peri};
 use embassy_sync::signal::Signal;
 use git_version::git_version;
-use led::LedIndicationsSignal;
+use indications::LedIndicationsSignal;
 use nrf_softdevice::Softdevice;
 
 use defmt::{info, unwrap};
 
 mod ble;
-mod led;
+mod indications;
 mod xbox;
 
 use defmt_rtt as _;
@@ -66,10 +66,8 @@ async fn main(spawner: Spawner) {
 
     static LED_INDICATIONS_SIGNAL: LedIndicationsSignal = Signal::new();
 
-    unwrap!(spawner.spawn(led::run(&LED_INDICATIONS_SIGNAL, r.led)));
-    unwrap!(spawner.spawn(ble::run(sd)));
-
-    LED_INDICATIONS_SIGNAL.signal(led::IndicationStyle::BlinkOnce);
+    unwrap!(spawner.spawn(indications::run(&LED_INDICATIONS_SIGNAL, r.led)));
+    unwrap!(spawner.spawn(ble::run(sd, &LED_INDICATIONS_SIGNAL)));
 
     sd.run().await
 }

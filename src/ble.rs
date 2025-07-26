@@ -14,8 +14,9 @@ use nrf_softdevice::{
 };
 use static_cell::StaticCell;
 
-use crate::xbox::{
-    self, ButtonFlags, JoystickData, XboxHidServiceClient, XboxHidServiceClientEvent,
+use crate::{
+    indications::LedIndicationsSignal,
+    xbox::{self, ButtonFlags, JoystickData, XboxHidServiceClient, XboxHidServiceClientEvent},
 };
 
 pub struct Bonder {}
@@ -190,7 +191,7 @@ async fn wait_connection(
 }
 
 #[embassy_executor::task]
-pub async fn run(sd: &'static Softdevice) {
+pub async fn run(sd: &'static Softdevice, indications: &'static LedIndicationsSignal) {
     static BONDER: StaticCell<Bonder> = StaticCell::new();
 
     let bonder = BONDER.init(Bonder::default());
