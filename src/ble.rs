@@ -190,7 +190,7 @@ async fn wait_connection(
 }
 
 #[embassy_executor::task]
-pub async fn run(sd: &'static Softdevice, provision_mode: bool) {
+pub async fn run(sd: &'static Softdevice) {
     static BONDER: StaticCell<Bonder> = StaticCell::new();
 
     let bonder = BONDER.init(Bonder::default());

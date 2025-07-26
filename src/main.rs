@@ -5,7 +5,7 @@ use assign_resources::assign_resources;
 
 use core::panic::PanicInfo;
 use embassy_executor::Spawner;
-use embassy_nrf::{gpio, interrupt, peripherals, Peri, Peripherals};
+use embassy_nrf::{interrupt, peripherals, Peri};
 use embassy_sync::signal::Signal;
 use git_version::git_version;
 use led::LedIndicationsSignal;
@@ -41,7 +41,7 @@ fn panic(_info: &PanicInfo) -> ! {
     cortex_m::peripheral::SCB::sys_reset();
 }
 
-fn hw_init() -> (Peripherals, &'static Softdevice) {
+fn hw_init() -> (AssignedResources, &'static Softdevice) {
     let mut config = embassy_nrf::config::Config::default();
 
     /*
@@ -55,34 +55,21 @@ fn hw_init() -> (Peripherals, &'static Softdevice) {
     let p = embassy_nrf::init(config);
     let sd = Softdevice::enable(&nrf_softdevice::Config::default());
 
-    (p, sd)
-}
-
-#[embassy_executor::task]
-async fn run_softdevice(sd: &'static Softdevice) -> ! {
-    sd.run().await
+    (split_resources!(p), sd)
 }
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
-    let (p, sd) = hw_init();
-    let r = split_resources!(p);
+    let (r, sd) = hw_init();
 
-    info!("Minibox ({}) is running. Hello!", git_version!());
+    info!("minibox ({}) is running. Hello!", git_version!());
 
     static LED_INDICATIONS_SIGNAL: LedIndicationsSignal = Signal::new();
 
-    // Check whether we should start scanning first
-    let scan_trigger_input = gpio::Input::new(r.channels.ch0, gpio::Pull::Up);
-    let should_scan = true; // scan_trigger_input.is_low();
-
-    if should_scan {
-        info!("scanning mode requested");
-    }
-
     unwrap!(spawner.spawn(led::run(&LED_INDICATIONS_SIGNAL, r.led)));
-    unwrap!(spawner.spawn(ble::run(sd, should_scan)));
-    unwrap!(spawner.spawn(run_softdevice(sd)));
+    unwrap!(spawner.spawn(ble::run(sd)));
 
     LED_INDICATIONS_SIGNAL.signal(led::IndicationStyle::BlinkOnce);
+
+    sd.run().await
 }
