@@ -1,0 +1,3 @@
+(fp_lib_table
+  (lib (name ble-receiver)(type KiCad)(uri ${KIPRJMOD}/ble-receiver.pretty)(options "")(descr ""))
+)
