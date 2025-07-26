@@ -53,7 +53,7 @@ git = "https://github.com/embassy-rs/embassy"
 git = "https://github.com/embassy-rs/embassy"
 
 [dependencies.nrf-softdevice]
-git = "https://github.com/embassy-rs/nrf-softdevice"
+git = "https://github.com/dossalab/nrf-softdevice"
 features = [ "s132", "ble-gatt-client", "ble-central", "ble-sec", "critical-section-impl" ]
 
 [dependencies.embassy-nrf]

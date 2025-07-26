@@ -157,11 +157,9 @@ async fn wait_connection(
 
     debug!("notifications enabled!");
 
-    let report_map = client.hid_report_map_read().await?;
-    info!("report map is {:x}", report_map);
-
-    let report = client.hid_report_read().await?;
-    info!("report is {:x}", report);
+    // XXX: would be cool to read and dynamically parse report map
+    // let report_map = client.hid_report_map_read().await?;
+    // info!("report map is {:x}", report_map);
 
     gatt_client::run(&conn, &client, |event| match event {
         XboxHidServiceClientEvent::HidReportNotification(val) => {
